@@ -1,0 +1,45 @@
+---
+title: "P8106_HW2"
+author:
+- "Naomi Simon-Kumar"
+- ns3782
+date: "02/03/2025"
+output:
+  pdf_document:
+    latex_engine: xelatex
+    toc: true
+    toc_depth: 2
+---
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+
+```
+
+## Loading libraries
+
+```{r libraries}
+
+library(tidyverse)
+library(ISLR)
+library(glmnet)
+library(caret)
+library(tidymodels)
+library(corrplot)
+library(ggplot2)
+library(plotmo)
+library(ggrepel)
+library(pls)
+library(knitr)
+
+```
+
+## Question (a): 
+
+```{r}
+
+
+```
+
+
