@@ -56,7 +56,6 @@ testing_data <- testing(data_split)
 ## Question (a): Smoothing spline models
 
 
-
 ```{r}
 
 # Set seed for reproducibility
@@ -110,13 +109,14 @@ ss.p +
 ```
 
 The plot I produced represents the fitted smoothing spline curves for each degree of freedom between the range of 3 and 15. It can be observed that as the degrees of freedom increases over this range, the smoothing spline goes from underfitting, to overfitting of the data. Specifically, as the degrees of freedom increases beyond ~10, the spline curve becomes highly wiggly, particularly at extreme values of perc.alumni, indicating overfitting of the data.
-However, for lower df (i.e., 3–5), the spline appears too smooth and does not capture much variation in the data.
+For lower df (i.e., 3–5), the spline appears quite smooth.
 
 ```{r}
 
 # Set seed for reproducibility
 set.seed(299)
 
+# Fits a smoothing spline with automatically selected df using generalized cross-validation
 fit.ss.gcv <- smooth.spline(training_data$perc.alumni, training_data$Outstate)
 
 gcv_df <- fit.ss.gcv$df  # Extract optimal df selected by GCV
@@ -132,12 +132,35 @@ ss.optimal <- data.frame(
 )
 
 # Add optimal spline curve to the plot
-
 ss.p +
   geom_line(aes(x = perc.alumni, y = pred), data = ss.optimal,
-  color = rgb(.8, .1, .1, 1), size = 1) + theme_bw()
+  color = rgb(.8, .1, .1, 1), linewidth = 1) + theme_bw()
+
+# Checking lambda value
+
+lambda_value <- fit.ss.gcv$lambda
+print(lambda_value) # High lambda value 2384.249
+
 
 
 ```
+
+For my smoothing spline model, I selected a degree of freedom of approximately 2, as determined by Generalized Cross-Validation (GCV). The GCV method minimises a criterion balancing model fit against model complexity, and in this case, selected a nearly linear model (df approx. 2.000237). This is evident in the plot above where the optimal smoothing spline appears as essentially a straight line, indicating that the relationship between percentage of alumni who donate and out-of-state tuition is best represented linearly. 
+
+While I explored models with higher degrees of freedom (ranging from 3 to 15), these more complex models with greater flexibility showed increasing wiggliness, especially at extreme values of perc.alumni as discussed, indicating potential overfitting. The GCV criterion effectively penalised this unnecessary complexity and favored the simpler model. 
+From what we have covered in class, we know that smoothing splines can range from very flexible (high df) to very smooth, with a minimum of 2 degrees of freedom.  As discussed in class, when lambda approaches infinity, the function becomes linear, and this model has a relatively large lambda value (2384.249), explaining why the optimal model with df approximately 2 appears as a straight line. This relationship between lambda and degrees of freedom demonstrates how the roughness penalty controls the smoothness of the function.
+
+The GCV has selected a model at approximately this minimum value, resulting in a nearly linear fit that would indicate out-of-state tuition (outstate) increases steadily with the percentage of alumni who donate (perc.alumni), without needing to be represented by a more complex nonlinear relationship.
+
+
+
+## Question (b): Multivariate Adaptive Regression Spline (MARS) model
+
+```{r}
+
+
+```
+
+
 
 
