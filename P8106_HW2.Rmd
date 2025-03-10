@@ -21,6 +21,8 @@ knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
 
 ```{r libraries}
 
+# Load libraries
+library(earth)
 library(tidyverse)
 library(ISLR)
 library(pls)
@@ -156,10 +158,99 @@ The GCV has selected a model at approximately this minimum value, resulting in a
 
 ## Question (b): Multivariate Adaptive Regression Spline (MARS) model
 
+In order to fit a piecewise linear mode using MARs, it is necessary to undertake a grid search to identify the optimal combination of the two hyperparameters (the degree of interactions, and the number of retained terms) that minimise prediction error.
+
+In the college dataset, there are greater than 15 predictors - we can therefore expect some interactions to potentially be important to the model. Therefore, I opted to set `degree` to 1:4, allowing me to represent an appropriate level of interactions (two-way interactions) without too much complexity.
+
+For the number of retained terms (`nprune`), I set the range to 2:25 because I assumed this provides a good balance between model simplicity and flexibility given our dataset size. With 565 observations and 17 variables, setting the maximum number of terms to 25 allows us to avoid overfitting while still allowing the model to capture complexity in the data. 
+
 ```{r}
+
+# Set seed for reproducibility
+set.seed(299)
+
+# 
+ctrl1 <- trainControl(method = "cv", number = 10)
+
+# Convert predictors to matrix (excl. response variable)
+x <- model.matrix(Outstate ~ ., college)[, -1] 
+
+# Vector of response
+y <- college$Outstate
+
+
+# Specify MARS grid - first attempt using Professor's example
+# mars_grid <- expand.grid(
+#  degree = 1:3, # degree of interactions
+#  nprune = 2:15  # no. of retained terms
+# )
+
+# Specify MARS grid - expanding grid to observe pattern
+mars_grid <- expand.grid(
+  degree = 1:4, # degree of interactions
+  nprune = 2:20  # no. of retained terms
+)
+
+#
+mars.fit <- train(x, y,
+                  method = "earth",
+                  tuneGrid = mars_grid,
+                  trControl = ctrl1)
+
+# Fit the ggplot
+
+ggplot(mars.fit)
+
+```
+
+To ensure I identified the optimal model complexity, I expanded the grid search to include degree = 1:4 and nprune = 2:20. This allowed me to observe how prediction error varied across different interaction levels and numbers of retained terms.
+
+From the results, I observed a clear dip in RMSE when degree = 1, followed by stabilisation, indicating that interactions beyond first-order did not meaningfully improve predictive performance. When I increased the interaction degree, RMSE values became more variable rather than decreasing steadily, which indicated there was no reliable reduction in prediction error. Given this, I selected degree = 1 as the optimal choice. The range nprune = 2:20 was also appropriate, as RMSE initially decreased as nprune increased but then stabilised, indicating that adding more terms would not significantly improve prediction accuracy.
+
+```{r}
+
+# Set seed for reproducibility
+set.seed(299)
+
+# Optimal parameters
+mars.fit$bestTune
+
+# Final model coefficients
+mars_coef <- coef(mars.fit$finalModel)
+
+mars_coef
 
 
 ```
+
+
+The best-tuned model selected `degree = 1` and `nprune = 19`. Therefore, the final model includes 19 retained terms with no interaction effects.
+
+The regression equation is as follows:
+
+$$
+\begin{aligned} 
+\hat{y} &= 10476.6698258 \\\\ 
+&- 0.731836010774518 \cdot h(\text{Expend} - 15622) 
+- 1.19200417180168 \cdot h(4440 - \text{Room.Board}) \\\\ 
+&- 24.6933614706046 \cdot h(95 - \text{Grad.Rate}) 
+- 0.323710582204791 \cdot h(\text{F.Undergrad} - 1350) \\\\ 
+&- 1.48350979223261 \cdot h(1350 - \text{F.Undergrad}) 
+- 64.1867488487131 \cdot h(22 - \text{perc.alumni}) \\\\ 
+&+ 0.368637778664394 \cdot h(\text{Apps} - 3767) 
++ 0.970883958999635 \cdot h(1300 - \text{Personal}) \\\\ 
+&+ 4.40596783428093 \cdot h(888 - \text{Enroll}) 
+- 1.88302716644046 \cdot h(2153 - \text{Accept}) \\\\ 
+&+ 6114.54532141715 \cdot I(\text{CollegeBenningtonCollege}) 
+- 6123.93147218096 \cdot I(\text{CollegeWentworthInstituteofTechnology}) \\\\ 
+&- 5895.73500281939 \cdot I(\text{CollegeLivingstoneCollege}) 
+- 5459.97459128078 \cdot I(\text{CollegeSpelmanCollege}) \\\\ 
+&+ 0.73321903304858 \cdot h(\text{Expend} - 5970) 
+- 5980.86335998011 \cdot I(\text{CollegeCreightonUniversity}) \\\\ 
+&- 5636.20605272795 \cdot I(\text{CollegeTrinityUniversity}) 
+- 5539.91281045007 \cdot I(\text{CollegeArkansasCollege(LyonCollege)}) 
+\end{aligned}
+$$
 
 
 
