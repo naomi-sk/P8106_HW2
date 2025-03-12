@@ -28,6 +28,9 @@ library(ISLR)
 library(pls)
 library(caret)
 library(tidymodels)
+library(pdp)
+library(ggplot2)
+library(mgcv)
 
 ```
 
@@ -160,7 +163,7 @@ The GCV has selected a model at approximately this minimum value, resulting in a
 
 In order to fit a piecewise linear mode using MARs, it is necessary to undertake a grid search to identify the optimal combination of the two hyperparameters (the degree of interactions, and the number of retained terms) that minimise prediction error.
 
-In the college dataset, there are greater than 15 predictors - we can therefore expect some interactions to potentially be important to the model. Therefore, I opted to set `degree` to 1:4, allowing me to represent an appropriate level of interactions (two-way interactions) without too much complexity.
+In the college dataset, there are greater than 15 predictors - we can therefore expect some interactions to potentially be important to the model. Therefore, I opted to set `degree` to 1:4, allowing me to represent an appropriate level of interactions without too much complexity. I initially tried a range of 1:3, but extended this to see if it would impact the patterns.
 
 For the number of retained terms (`nprune`), I set the range to 2:25 because I assumed this provides a good balance between model simplicity and flexibility given our dataset size. With 565 observations and 17 variables, setting the maximum number of terms to 25 allows us to avoid overfitting while still allowing the model to capture complexity in the data. 
 
@@ -169,15 +172,12 @@ For the number of retained terms (`nprune`), I set the range to 2:25 because I a
 # Set seed for reproducibility
 set.seed(299)
 
-# 
+# Set 10-fold CV
 ctrl1 <- trainControl(method = "cv", number = 10)
 
-# Convert predictors to matrix (excl. response variable)
-x <- model.matrix(Outstate ~ ., college)[, -1] 
-
-# Vector of response
-y <- college$Outstate
-
+# Remove College column
+training_data <- training_data %>% select(-College)
+testing_data <- testing_data %>% select(-College)
 
 # Specify MARS grid - first attempt using Professor's example
 # mars_grid <- expand.grid(
@@ -191,8 +191,9 @@ mars_grid <- expand.grid(
   nprune = 2:20  # no. of retained terms
 )
 
-#
-mars.fit <- train(x, y,
+# Fit data on training set
+mars.fit <- train(Outstate ~ .,
+                  data = training_data,
                   method = "earth",
                   tuneGrid = mars_grid,
                   trControl = ctrl1)
@@ -224,34 +225,178 @@ mars_coef
 ```
 
 
-The best-tuned model selected `degree = 1` and `nprune = 19`. Therefore, the final model includes 19 retained terms with no interaction effects.
+The best-tuned model selected `degree = 1` and `nprune = 13`. Therefore, the final model includes 13 retained terms with no interaction effects.
 
-The regression equation is as follows:
+The final `regression equation` (degree = 1, nprune = 13) is as follows:
 
 $$
 \begin{aligned} 
-\hat{y} &= 10476.6698258 \\\\ 
-&- 0.731836010774518 \cdot h(\text{Expend} - 15622) 
-- 1.19200417180168 \cdot h(4440 - \text{Room.Board}) \\\\ 
-&- 24.6933614706046 \cdot h(95 - \text{Grad.Rate}) 
-- 0.323710582204791 \cdot h(\text{F.Undergrad} - 1350) \\\\ 
-&- 1.48350979223261 \cdot h(1350 - \text{F.Undergrad}) 
-- 64.1867488487131 \cdot h(22 - \text{perc.alumni}) \\\\ 
-&+ 0.368637778664394 \cdot h(\text{Apps} - 3767) 
-+ 0.970883958999635 \cdot h(1300 - \text{Personal}) \\\\ 
-&+ 4.40596783428093 \cdot h(888 - \text{Enroll}) 
-- 1.88302716644046 \cdot h(2153 - \text{Accept}) \\\\ 
-&+ 6114.54532141715 \cdot I(\text{CollegeBenningtonCollege}) 
-- 6123.93147218096 \cdot I(\text{CollegeWentworthInstituteofTechnology}) \\\\ 
-&- 5895.73500281939 \cdot I(\text{CollegeLivingstoneCollege}) 
-- 5459.97459128078 \cdot I(\text{CollegeSpelmanCollege}) \\\\ 
-&+ 0.73321903304858 \cdot h(\text{Expend} - 5970) 
-- 5980.86335998011 \cdot I(\text{CollegeCreightonUniversity}) \\\\ 
-&- 5636.20605272795 \cdot I(\text{CollegeTrinityUniversity}) 
-- 5539.91281045007 \cdot I(\text{CollegeArkansasCollege(LyonCollege)}) 
+\hat{y} &= 11503.4960291 \\ 
+&- 1.3252744 \cdot h(4138 - \text{Room.Board}) 
+- 0.6259264 \cdot h(\text{Expend} - 15003) \\ 
+&- 28.7113025 \cdot h(83 - \text{Grad.Rate}) 
++ 0.3277437 \cdot h(\text{Room.Board} - 4138) \\ 
+&- 1.1507561 \cdot h(\text{F.Undergrad} - 1365) 
+- 107.9897002 \cdot h(16 - \text{perc.alumni}) \\ 
+&+ 1.1616572 \cdot h(1300 - \text{Personal}) 
++ 0.6356263 \cdot h(\text{Expend} - 5664) \\ 
+&+ 0.8655538 \cdot h(\text{F.Undergrad} - 3566) 
++ 64.9589711 \cdot h(\text{PhD} - 81) \\ 
+&- 1.5784786 \cdot h(2059 - \text{Accept}) 
++ 0.3322853 \cdot h(\text{Apps} - 3294)
 \end{aligned}
 $$
 
+where h(x-c) represents hinge functions, defined as h(x-c) = max(0, x-c).
+
+Next, creating a `Partial Dependency Plot of a selected predictor`, Room.Board.
+
+```{r}
+
+# Set seed for reproducibility
+set.seed(299)
+
+# PDP for Room.Board (single predictor)
+p1 <- pdp::partial(mars.fit, pred.var = c("Room.Board"), grid.resolution = 10) |>
+  autoplot()
+
+# PDP for Room.Board and F.Undergrad (interaction effect)
+p2 <- pdp::partial(mars.fit, pred.var = c("Room.Board", "F.Undergrad"),
+                   grid.resolution = 10) |>
+  pdp::plotPartial(levelplot = FALSE, zlab = "yhat", drape = TRUE,
+                   screen = list(z = 20, x = -60))
+
+# Show side by side
+gridExtra::grid.arrange(p1, p2, ncol = 2)
+
+
+```
+
+The left partial dependence plot of the predictor Room.Board (room and board costs) shows out-of-state tuition rises sharply as Room.Board costs increase up to around $4,200, then increases more gradually. This indicates that Room.Board increases beyond this threshold have a smaller, but still clear effect on out of state tuition.
+
+On the right, the interaction plot includes F.Undergrad (number of full-time undergraduates). Based on this, it appears that Room.Board clearly drives great variation in tuition predictions, but at higher Room.Board values, larger undergraduate enrollment is also associated with higher tuition. This suggests an effect where institutions with both high Room.Board and high enrollment tend to charge the highest out-of-state tuition.
+
+Next, obtaining the test error:
+
+```{r}
+
+# Set seed for reproducibility
+set.seed(299)
+
+# Obtain response variable from testing data
+y_testing <- testing_data$Outstate
+
+# Predict on test data using trained MARS model
+y_pred_MARS <- predict(mars.fit, newdata = testing_data)
+
+# Compute RMSE (Test Error)
+test_rmse <- sqrt(mean((y_testing - y_pred_MARS)^2))
+
+# Print test RMSE
+test_rmse
+
+
+```
+
+Therefore, the test error is `1553.758`.
+
+## Question (c): Generalized Additive Model (GAM)
+
+First, I will proceed with constructing a GAM model, allowing us to mix non-linear and linear terms and build a model estimating the relationship between the outcome (`Outstate`) and predictors in the provided dataset.
+
+
+```{r}
+
+# Set seed for reproducibility
+set.seed(299)
+
+# Fit a GAM model, using training data
+gam_outstate <- gam(Outstate ~ s(Apps) + s(Accept) + s(Enroll) + 
+                            s(Top10perc) + s(Top25perc) + s(F.Undergrad) + 
+                            s(P.Undergrad) + s(Room.Board) + s(Books) + 
+                            s(Personal) + s(PhD) + s(Terminal) + s(S.F.Ratio) + 
+                            s(perc.alumni) + s(Expend) + s(Grad.Rate), 
+                 data = training_data)
+
+# Summary
+summary(gam_outstate)
+
+
+```
+
+Based on the GAM model summary, many of the predictors have estimated degrees of freedom (edf) greater than 1, indicating that they are non-linear terms. There are also predictors that are linear or likely to be linear (edf around 1).
+
+```{r}
+
+# Visualise predictors
+plot(gam_outstate)
+
+```
+
+Based on the plots above, Enroll, Top25perc, and P.Undergrad show linear relationships with out-of-state tuition, consistent with their estimated degrees of freedom (edf around 1) in the model summary. Enroll appears to be the only significant linear term, based on the model summary (p < 0.05).
+
+Other predictors, like Apps, Accept,  and F.Undergrad among others show some nonlinearity, which is also reflected in their higher edf values. However, not all nonlinear terms are statistically significant. For example, Apps and Top10perc have higher edf values but non-significant p-values, suggesting their effects may not be meaningful. However, nonlinear terms like Accept, F.Undergrad, Room.Board, perc.alumni, and Expend are significant.
+
+Next, finding the test error of the model:
+
+```{r}
+
+# Set seed for reproducibility
+set.seed(299)
+
+# Prediction using testing data
+y_pred_gam <- predict(gam_outstate, newdata = testing_data)
+
+# Test error/RMSE
+test_rmse_gam <- sqrt(mean((testing_data$Outstate - y_pred_gam)^2))
+
+test_rmse_gam
+
+```
+
+The test error of this GAM model is `1514.57`.
 
 
 
+## Question (d): Preferred model for predicting out-of-state tuition
+
+First, I will fit a linear model using the training data, and compute the test error (RMSE) for comparison.
+
+```{r}
+
+# Set seed for reproducibility
+set.seed(299)
+
+# Fit Linear model using training data
+lm.fit <- train(Outstate ~ .,
+                data = training_data,
+                method = "lm",
+                trControl = ctrl1)
+
+# Predict on training data
+y_pred_lm_train <- predict(lm.fit, newdata = training_data)
+
+# training RMSE 
+train_rmse_lm <- sqrt(mean((training_data$Outstate - y_pred_lm_train)^2))
+train_rmse_lm
+
+# Predict on training data using MARS model
+y_pred_mars_train <- predict(mars.fit, newdata = training_data)
+
+# Compute Training RMSE for MARS Model
+train_rmse_mars <- sqrt(mean((training_data$Outstate - y_pred_mars_train)^2))
+
+# Print Training RMSE
+print(train_rmse_mars)
+
+```
+
+Based on the results above computing training data RMSE, I would favor a MARS model over a linear model for predicting out of state tuition in this dataset. The MARS model performs better at predicting out of state tuition with a **training RMSE of 1645.37** compared to **1946.79 for the linear model**.
+
+Unlike the linear model, the MARS model can represent significant non-linear relationships, for example with Room.Board, where there is a steep increase in tuition up to approximately $4,200 followed by a more gradual effect. As discussed, the partial dependence plots clearly show several non-linear terms are significant, which is an important consideration when choosing an appropriate model.
+
+The MARS model's automatic feature selection identifies the most important predictors and their optimal cut points, creating a model that shows specific thresholds where relationships between predictors and tuition change. This approach works well for data like this case, where relationships often change at certain thresholds rather than following strictly linear patterns. Given the presence of nonlinearity in variables such as Expend, F.Undergrad, and Room.Board, the MARS model is better suited for this dataset than a linear model.
+
+Personally, I wouldn't consider a MARS model to be universally superior to a linear model in all cases - it would really depend on the data in question (including the relationship between predictors and the outcome), as well as the research objectives.
+For instance, linear models would be most appropriate when the true relationships are linear/close to linear, and when interpretability is a key consideration. Linear models may also be preferred if there is limited data, i.e., to avoid overfitting the data, which may be the case with MARS in smaller datasets.
+One of the concepts we discussed in class was parsimony; that is, we should aim to choose the simplest appropriate model. If a linear model represents the relationships in the data well, and is sufficiently accurate in prediction, it would not be preferable to select a more complex MARS model. That being said, I would note that MARS models are better for cases where there are clear non-linear relationships (such as in this college dataset), and also where the dataset is sizeable enough to reliably identify complex patterns. MARS can also manage interactions between variables. Therefore, I would argue that in general applications the choice of MARS or a linear model should be guided by the nature of the data and aims of the intended research analysis.
